@@ -18,6 +18,7 @@
 #define _MINUI_H_
 
 #include <stdbool.h>
+char RES_LOC[255];
 
 typedef void* gr_surface;
 typedef unsigned short gr_pixel;
@@ -41,24 +42,32 @@ void gr_blit(gr_surface source, int sx, int sy, int w, int h, int dx, int dy);
 unsigned int gr_get_width(gr_surface surface);
 unsigned int gr_get_height(gr_surface surface);
 
-
 // input event structure, include <linux/input.h> for the definition.
 // see http://www.mjmwired.net/kernel/Documentation/input/ for info.
 struct input_event;
 
-int ev_init(void);
+typedef int (*ev_callback)(int fd, short revents, void *data);
+typedef int (*ev_set_key_callback)(int code, int value, void *data);
+
+int ev_init(ev_callback input_cb, void *data);
 void ev_exit(void);
-int ev_get(struct input_event *ev, unsigned dont_wait);
+int ev_add_fd(int fd, ev_callback cb, void *data);
+int ev_sync_key_state(ev_set_key_callback set_key_cb, void *data);
+
+/* timeout has the same semantics as for poll
+ *    0 : don't block
+ *  < 0 : block forever
+ *  > 0 : block for 'timeout' milliseconds
+ */
+int ev_wait(int timeout);
+
+int ev_get_input(int fd, short revents, struct input_event *ev);
+void ev_dispatch(void);
 
 // Resources
-#ifndef RES_IMAGES_FOLDER
-#define RES_IMAGES_FOLDER "/system/bootmenu/images"
-#endif
 
 // Returns 0 if no error, else negative.
 int res_create_surface(const char* name, gr_surface* pSurface);
-void res_free_surface(gr_surface* pSurface);
-
-int gr_fb_test(void);
+void res_free_surface(gr_surface surface);
 
 #endif

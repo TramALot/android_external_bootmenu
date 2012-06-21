@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2012 The Android Open Source Project
+ * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,24 +12,26 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * 
+ * Changes @ June 2012
+ * Project lense (@whirleyes) - Fork Android recovery source code for spyder bootmenu
+ *
  */
 
-#ifndef RECOVERY_COMMON_H
-#define RECOVERY_COMMON_H
+#ifndef BOOTMENU_COMMON_H
+#define BOOTMENU_COMMON_H
 
 #include <stdio.h>
 
 // Initialize the graphics system.
 void ui_init();
-void ui_final();
-
-void evt_init();
-void evt_exit();
+void ui_exit();
 
 // Use KEY_* codes from <linux/input.h> or KEY_DREAM_* from "minui/minui.h".
 int ui_wait_key();            // waits for a key/button press, returns the code
 int ui_key_pressed(int key);  // returns >0 if the code is currently pressed
 int ui_text_visible();        // returns >0 if text log is currently visible
+int ui_text_ever_visible();   // returns >0 if text log was ever visible
 void ui_show_text(int visible);
 void ui_clear_key_queue();
 
@@ -37,8 +39,6 @@ void ui_clear_key_queue();
 // The screen is small, and users may need to report these messages to support,
 // so keep the output short and not too cryptic.
 void ui_print(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
-// same without args
-void ui_print_str(char *str);
 
 // Display some header text followed by a menu of items, which appears
 // at the top of the screen (in place of any scrolling ui_print()
@@ -54,8 +54,8 @@ void ui_end_menu();
 // Set the icon (normally the only thing visible besides the progress bar).
 enum {
   BACKGROUND_ICON_NONE,
-  BACKGROUND_DEFAULT,
-  BACKGROUND_ALT,
+  BACKGROUND_ICON_INSTALLING,
+  BACKGROUND_ICON_ERROR,
   NUM_BACKGROUND_ICONS
 };
 void ui_set_background(int icon);
@@ -93,20 +93,68 @@ void ui_reset_progress();
 #define STRINGIFY(x) #x
 #define EXPAND(x) STRINGIFY(x)
 
-static void finish(void);
+typedef struct {
+    // number of frames in indeterminate progress bar animation
+    int indeterminate_frames;
 
-enum { 
+    // number of frames per second to try to maintain when animating
+    int update_fps;
+
+    // number of frames in installing animation.  may be zero for a
+    // static installation icon.
+    int installing_frames;
+
+    // the install icon is animated by drawing images containing the
+    // changing part over the base icon.  These specify the
+    // coordinates of the upper-left corner.
+    int install_overlay_offset_x;
+    int install_overlay_offset_y;
+
+} UIParameters;
+
+int device_toggle_display(volatile char* key_pressed, int key_code);
+int device_reboot_now(volatile char* key_pressed, int key_code);
+static void unlock();
+
+
+//UI related
+#define MAX_COLS 48
+#define MAX_ROWS 16
+
+#define CHAR_WIDTH 15
+#define CHAR_HEIGHT 24
+#define CHAR_SPACE 48
+
+int wait_timeout;
+int boot_default;
+int touch_select;
+int touch_x_sen;
+int touch_y_sen;
+
+enum {
   DISABLE,
   ENABLE
 };
 
-//turn on/off a led
-int led_alert(const char* color, int value);
+#define NO_ACTION           -1
 
-int  ui_create_bitmaps();
-void ui_free_bitmaps();
+#define HIGHLIGHT_UP        -2
+#define HIGHLIGHT_DOWN      -3
+#define SELECT_ITEM         -4
 
-//checkup
-int checkup_report(void);
+#define ITEM_STOCK           0
+#define ITEM_SECOND          1
+#define ITEM_RECOVERY        2
 
-#endif  // RECOVERY_COMMON_H
+///action
+int exec_and_wait(char** argp);
+void led(const char* color, int value);
+void amoled(int value);
+void vibrate(int value);
+void boot_stock();
+void boot_second();
+void boot_recovery();
+
+#define RECOVERY_MODE_FILE "/data/.recovery_mode"
+#define SECOND_MODE_FILE "/data/.second_mode"
+#endif  // BOOTMENU_COMMON_H
