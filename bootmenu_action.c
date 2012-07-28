@@ -37,6 +37,7 @@
 #include <dirent.h>
 #include <signal.h>
 #include <cutils/properties.h>
+#include "common.h"
 
 int exec_and_wait(char** argp) {
     pid_t pid;
@@ -54,8 +55,8 @@ int exec_and_wait(char** argp) {
     case 0: /* child */
         sigprocmask(SIG_SETMASK, &omask, NULL);
         execve(argp[0], argp, environ);
-    _exit(127);
-  }
+    	_exit(127);
+	}
 
     intsave = (sig_t) bsd_signal(SIGINT, SIG_IGN);
     quitsave = (sig_t) bsd_signal(SIGQUIT, SIG_IGN);
@@ -82,18 +83,12 @@ void led(const char* color, int value) {
 
 void amoled(int value) { write_sys("/sys/class/backlight/430_540_960_amoled_bl/brightness", value); }
 void vibrate(int value) { write_sys("/sys/class/timed_output/vibrator/enable", value); }
-
-void boot_stock() {
-	char* run_args[] = { "/preinstall/bootmenu/binary/busybox", "sh", "-c", "/preinstall/bootmenu/script/boot_stock.sh", NULL };
-	exec_and_wait(run_args);
-}
-
-void boot_recovery() {
-	char* run_args[] = { "/preinstall/bootmenu/binary/busybox", "sh", "-c", "/preinstall/bootmenu/script/boot_recovery.sh", NULL };
-	exec_and_wait(run_args);
-}
-
-void boot_second() {
-	char* run_args[] = { "/preinstall/bootmenu/binary/busybox", "sh", "-c", "/preinstall/bootmenu/script/boot_second.sh", NULL };
+void boot_stock() { boot("stock", stock_adbd, stock_init); }
+void boot_second() { boot("second", second_adbd, second_init); }
+void boot_recovery() { boot("recovery", 0, 0); }
+void boot(const char* script, int adbd, int init) {
+	char scripts[PATH_MAX];
+	sprintf(scripts, "/preinstall/bootmenu/script/boot_%s.sh %d %d", script, adbd, init);
+	char* run_args[] = { "/preinstall/bootmenu/binary/busybox", "sh", "-c", scripts, NULL };
 	exec_and_wait(run_args);
 }

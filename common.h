@@ -22,7 +22,11 @@
 #define BOOTMENU_COMMON_H
 
 #include <stdio.h>
+#include <cutils/klog.h>
 
+#define ERROR(x...)   KLOG_ERROR("Bootmenu", x)
+#define NOTICE(x...)  KLOG_NOTICE("Bootmenu", x)
+#define INFO(x...)    KLOG_INFO("Bootmenu", x)
 // Initialize the graphics system.
 void ui_init();
 void ui_exit();
@@ -55,7 +59,6 @@ void ui_end_menu();
 enum {
   BACKGROUND_ICON_NONE,
   BACKGROUND_ICON_INSTALLING,
-  BACKGROUND_ICON_ERROR,
   NUM_BACKGROUND_ICONS
 };
 void ui_set_background(int icon);
@@ -71,9 +74,6 @@ static const int VERIFICATION_PROGRESS_TIME = 60;
 static const float VERIFICATION_PROGRESS_FRACTION = 0.25;
 static const float DEFAULT_FILES_PROGRESS_FRACTION = 0.4;
 static const float DEFAULT_IMAGE_PROGRESS_FRACTION = 0.1;
-
-// Show a rotating "barberpole" for ongoing operations.  Updates automatically.
-void ui_show_indeterminate_progress();
 
 // Hide and reset the progress bar.
 void ui_reset_progress();
@@ -94,10 +94,7 @@ void ui_reset_progress();
 #define EXPAND(x) STRINGIFY(x)
 
 typedef struct {
-    // number of frames in indeterminate progress bar animation
-    int indeterminate_frames;
-
-    // number of frames per second to try to maintain when animating
+	// number of frames per second to try to maintain when animating
     int update_fps;
 
     // number of frames in installing animation.  may be zero for a
@@ -123,13 +120,14 @@ static void unlock();
 
 #define CHAR_WIDTH 15
 #define CHAR_HEIGHT 24
-#define CHAR_SPACE 48
+#define CHAR_SPACE2 48
+#define CHAR_SPACE 130
 
+int selected;
 int wait_timeout;
 int boot_default;
-int touch_select;
-int touch_x_sen;
-int touch_y_sen;
+int stock_init, second_init;
+int stock_adbd, second_adbd;
 
 enum {
   DISABLE,
@@ -146,6 +144,9 @@ enum {
 #define ITEM_SECOND          1
 #define ITEM_RECOVERY        2
 
+///var
+
+
 ///action
 int exec_and_wait(char** argp);
 void led(const char* color, int value);
@@ -154,7 +155,10 @@ void vibrate(int value);
 void boot_stock();
 void boot_second();
 void boot_recovery();
+void boot(const char* script, int adbd, int init);
 
-#define RECOVERY_MODE_FILE "/data/.recovery_mode"
-#define SECOND_MODE_FILE "/data/.second_mode"
+#define RECOVERY_MODE_FILE "/preinstall/.recovery_mode"
+#define STOCK_MODE_FILE "/preinstall/.stock_mode"
+#define SECOND_MODE_FILE "/preinstall/.second_mode"
+
 #endif  // BOOTMENU_COMMON_H

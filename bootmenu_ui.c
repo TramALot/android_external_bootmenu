@@ -37,7 +37,6 @@
 #include "minui/minui.h"
 
 UIParameters ui_parameters = {
-    6,       // indeterminate progress bar frames
     25,      // fps
     7,       // installation icon frames (0 == static image)
     23, 83, // installation icon overlay offset
@@ -46,13 +45,11 @@ UIParameters ui_parameters = {
 static pthread_mutex_t gUpdateMutex = PTHREAD_MUTEX_INITIALIZER;
 static gr_surface gBackgroundIcon[NUM_BACKGROUND_ICONS];
 static gr_surface *gInstallationOverlay;
-static gr_surface *gProgressBarIndeterminate;
 static gr_surface gProgressBarEmpty;
 static gr_surface gProgressBarFill;
 
 static const struct { gr_surface* surface; const char *name; } BITMAPS[] = {
     { &gBackgroundIcon[BACKGROUND_ICON_INSTALLING], "icon_installing" },
-    { &gBackgroundIcon[BACKGROUND_ICON_ERROR],      "icon_error" },
     { &gProgressBarEmpty,               "progress_empty" },
     { &gProgressBarFill,                "progress_fill" },
     { NULL,                             NULL },
@@ -63,7 +60,6 @@ static int gInstallingFrame = 0;
 
 static enum ProgressBarType {
     PROGRESSBAR_TYPE_NONE,
-    PROGRESSBAR_TYPE_INDETERMINATE,
     PROGRESSBAR_TYPE_NORMAL,
 } gProgressBarType = PROGRESSBAR_TYPE_NONE;
 
@@ -165,18 +161,12 @@ static void draw_progress_locked()
                 gr_blit(gProgressBarEmpty, pos, 0, width-pos, height, dx+pos, dy);
             }
         }
-
-        if (gProgressBarType == PROGRESSBAR_TYPE_INDETERMINATE) {
-            static int frame = 0;
-            gr_blit(gProgressBarIndeterminate[frame], 0, 0, width, height, dx, dy);
-            frame = (frame + 1) % ui_parameters.indeterminate_frames;
-        }
     }
 }
 
 static void draw_text_line(int row, const char* t, int space) {
   if (t[0] != '\0') {
-    gr_text(0, (row+1)*space-1, t);
+    gr_text(0, (row+1)*space, t);
   }
 }
 
@@ -184,53 +174,85 @@ static void draw_text_line(int row, const char* t, int space) {
 #define GREEN 85, 170, 56, 255
 #define WHITE 200, 200, 200, 255
 #define YELLOW 255, 255, 0, 255
-//gr_color(64, 96, 255, 255);//blue
+#define BLACK 0, 0, 0, 255
+#define GREY 100, 100, 100, 255
+#define GREY2 85, 85, 85, 255
+#define GREY3 70, 70, 70, 255
+
 // Redraw everything on the screen.  Does not flip pages.
 // Should only be called with gUpdateMutex locked.
 static void draw_screen_locked(void)
 {
+	int starty, endy;
+	int startx, endx;
+	char autoboot[MAX_COLS];
+	int fbwidth = gr_fb_width();
     draw_background_locked(gCurrentIcon);
     draw_progress_locked();
 	
-	char autoboot[MAX_COLS];	
+	
 	sprintf(autoboot, "         auto-boot in %ds..", wait_timeout);
 	gr_color(YELLOW);
-	draw_text_line(2, TAP_BEGIN,CHAR_SPACE);
 	draw_text_line(34, autoboot,CHAR_HEIGHT);
 
     if (show_text) {
-		gr_color(0, 0, 0, 255);
-		gr_fill(0, 0, gr_fb_width(), 300);
+		//clean until 300px (clean tap text)
+		gr_color(BLACK);
+		gr_fill(0, 0, fbwidth, 300);
+		//set all as transparent
         gr_color(0, 0, 0, 160);
-        gr_fill(0, 0, gr_fb_width(), gr_fb_height());
+        gr_fill(0, 0, fbwidth, gr_fb_height());
 
         int i = 0;
         if (show_menu) {
-			//Selected item
-			gr_color(GREEN);
-            gr_fill(0, ((menu_top+menu_sel) * CHAR_SPACE)+6, gr_fb_width(), ((menu_top+menu_sel+1)*CHAR_SPACE+CHAR_HEIGHT)-6);
+			//full clean until 700px (clean backgroud)
+			gr_color(BLACK);
+			gr_fill(0, 300, fbwidth, 700);
+			
+			gr_color(GREEN);	
+ 			draw_text_line(5, " Please choose your boot preference", CHAR_HEIGHT);
+			gr_color(GREY3);	
+ 			draw_text_line(28, "    ** single tap - highlight **", CHAR_HEIGHT);
+ 			draw_text_line(29, "    ** double tap - select    **", CHAR_HEIGHT);
+			startx = 70;
+			endx = fbwidth - startx;
 
-            for (; i < menu_top + menu_items; ++i) {
+            for (i=0; i < menu_top + menu_items; ++i) {
 				if (i == 0) {
 					gr_color(YELLOW);
-                } else if (i == menu_top+menu_sel) {
-                    gr_color(WHITE);
-                } else {
-					gr_color(GREEN);
+					draw_text_line(i, menu[i],CHAR_SPACE2);
+					continue;
                 }
+
+				//button color
+				starty = (i*CHAR_SPACE)+(CHAR_SPACE/2)+1;
+				endy = ((i+1)*CHAR_SPACE)+(CHAR_SPACE/2)-CHAR_HEIGHT-1;
+				if (i == menu_top+menu_sel) { gr_color(WHITE); }
+				else { gr_color(GREY3); }
+				gr_fill(startx-3, starty-3, endx+3, endy+3);
+
+				gr_color(GREY2);
+				gr_fill(startx-2, starty-2, endx+2, endy+2);
+
+				if (i == menu_top+menu_sel) { gr_color(GREEN); }
+				else { gr_color(GREY); }
+				gr_fill(startx, starty, endx, endy);
+
+				//button text
+				if (i == menu_top+menu_sel) { gr_color(BLACK); }
+				else { gr_color(WHITE); } 
 				draw_text_line(i, menu[i],CHAR_SPACE);
             }
-			//Horizontal line
-			gr_color(GREEN);
-            gr_fill(0, i*CHAR_SPACE+CHAR_HEIGHT-6,gr_fb_width(), i*CHAR_SPACE+CHAR_HEIGHT-4);
-            ++i;
-        }
-
-        gr_color(WHITE);
-        for (; i < text_rows; ++i) { //ui_print
-            draw_text_line(text_rows+i, text[(i+text_top) % text_rows],CHAR_HEIGHT);
-        }
-    }
+        } else { //show log
+	        gr_color(WHITE);
+    	    for (; i < text_rows; ++i) { //ui_print
+    	        draw_text_line(text_rows+i, text[(i+text_top) % text_rows],CHAR_HEIGHT);
+    	    }
+    	}
+	} else {
+		gr_color(YELLOW);
+		draw_text_line(2, TAP_BEGIN,CHAR_SPACE2);
+	}
 }
 
 // Redraw everything on the screen and flip the screen (make it visible).
@@ -274,12 +296,6 @@ static void *progress_thread(void *cookie)
             redraw = 1;
         }
 
-        // update the progress bar animation, if active
-        // skip this if we have a text overlay (too expensive to update)
-        if (gProgressBarType == PROGRESSBAR_TYPE_INDETERMINATE && !show_text) {
-            redraw = 1;
-        }
-
         // move the progress bar forward on timed intervals, if configured
         int duration = gProgressScopeDuration;
         if (gProgressBarType == PROGRESSBAR_TYPE_NORMAL && duration > 0) {
@@ -305,28 +321,23 @@ static void *progress_thread(void *cookie)
 }
 
 static int rel_sum = 0;
-
+//touch filter
 static int touch_x = 0;
 static int touch_y = 0;
-static int old_x = 0;
-static int old_y = 0;
-static int diff_x = 0;
-static int diff_y = 0;
-
-static void reset_gestures() {
-    diff_x = 0;
-    diff_y = 0;
-    old_x = 0;
-    old_y = 0;
-    touch_x = 0;
-    touch_y = 0;
-}
+static int touch_p = 0;
+static int last_x = 0;
+static int last_y = 0;
+double touch_o, touch_b;
+//touch state
+static int filtered = 0;
+static int last_sel = 0;
 
 static int input_callback(int fd, short revents, void *data)
 {
     struct input_event ev;
     int ret;
     int fake_key = 0;
+	double touch_n;
 
     ret = ev_get_input(fd, revents, &ev);
     if (ret)
@@ -355,79 +366,76 @@ static int input_callback(int fd, short revents, void *data)
                 rel_sum = 0;
             }
         }
-	} else if (ev.type == EV_ABS) {
+	} else if (ev.type == EV_ABS) {	//touch event tracker
 //ABS_MT_TOUCH_MAJOR	0x30(48)	/* Major axis of touching ellipse */
 //ABS_MT_POSITION_X		0x35(53)	/* Center X ellipse position */
 //ABS_MT_POSITION_Y		0x36(54)	/* Center Y ellipse position */
 //ABS_MT_PRESSURE		0x3a(58)	/* Pressure on contact area */
-
-		//touch event tracker
+//printf("TOUCH %d %d\n",ev.code, ev.value);
+		
+		if (ev.code == ABS_MT_POSITION_X) touch_x = ev.value;
+		if (ev.code == ABS_MT_POSITION_Y) touch_y = ev.value;
 		if (ev.code == ABS_MT_PRESSURE) {
-            if (ev.value == 0) {
-				reset_gestures();
-			} else {
+			//filter for XT910 china kernel/improper touch event
+			if ((last_x != touch_x) && (last_y != touch_y)) {
+				last_x = touch_x;
+				last_y = touch_y;				
+				filtered = 1;
+			}
+			//simulate touch release
+            if (ev.value < touch_p) { touch_p = ev.value; }
+			//in touch event
+			else {
+				touch_p = ev.value;
+				if (filtered == 1) { fake_key = 1; }
 				if (!show_text) {
 					fake_key = 1;
                 	ev.type = EV_KEY;
                 	ev.code = KEY_BACK;
                 	ev.value = 1;
+					last_sel = -1;
 				}
 			}
+			filtered = 0;
         }
-
-		//slide left-right
-		if ((ev.code == ABS_MT_POSITION_X) && (touch_select == 1)) {
-			old_x = touch_x;
-        	touch_x = ev.value;
-			if (old_x != 0) diff_x += touch_x - old_x;
-
-			if ((diff_y < touch_y_sen) && (diff_y > (-1*touch_y_sen))) {
-            	if (diff_x > touch_x_sen) {
-					//ui_print("%d %d\n", diff_x, diff_y);
-					fake_key = 1;
-            	    ev.type = EV_KEY;
-            	    ev.code = KEY_SEARCH;
-            	    ev.value = 1;
-            	    reset_gestures();
-				}
-			}
-		}
-
-		//slide up-down
-		if (ev.code == ABS_MT_POSITION_Y) {
-			old_y = touch_y;
-        	touch_y = ev.value;
-			if (old_y != 0) diff_y += touch_y - old_y;
-			if ((diff_x < touch_y_sen) && (diff_x > (-1*touch_y_sen))) {
-            	if (diff_y > touch_y_sen) {
-					//ui_print("%d %d\n", diff_x, diff_y);
-					fake_key = 1;
-                	ev.type = EV_KEY;
-                	ev.code = KEY_MENU;
-                	ev.value = 1;
-                	reset_gestures();
-				} else if(diff_y < (-1*touch_y_sen)) {
-					//ui_print("%d %d\n", diff_x, diff_y);
-					fake_key = 1;
-               	 	ev.type = EV_KEY;
-               	 	ev.code = KEY_HOME;
-                	ev.value = 1;
-                	reset_gestures();
-           		}
-			}
-		}
 	} else {
         rel_sum = 0;
     }
 
 	if (fake_key) {
-		if (ev.code == KEY_BACK) {
-			vibrate(30);
-		} else {
-			vibrate(15);
+		touch_n = now();
+		//printf("touch time %f\n",touch_n);
+		if (ev.code != KEY_BACK) {
+			if ((touch_y < 190) || (touch_y > 610)) {				
+				ev.code = KEY_RESERVED;
+				if (touch_n - touch_o > 1) {
+					//printf("dummy key %f\n",touch_n - touch_o);
+					touch_o = now();
+					ev.type = EV_KEY;
+		           	ev.value = 1;
+					//printf("touch outside button area\n");
+				}
+			}
+			else if ((touch_y > 200) && (touch_y < 300)) { selected = ui_menu_select(0); }
+			else if ((touch_y > 350) && (touch_y < 450)) { selected = ui_menu_select(1); }
+			else if ((touch_y > 500) && (touch_y < 600)) { selected = ui_menu_select(2); }
+		}
+		if ((ev.code != KEY_RESERVED) && (touch_n - touch_b > 0.2)) {
+			//printf("end & back key  %f\n",touch_n - touch_b);
+			touch_b = now();
+			vibrate(20);
+			if (ev.code != KEY_BACK) {
+				//printf("Button touched! : %d y : %d p : %d\n", touch_x, touch_y, selected);
+				if (selected == last_sel) {
+					ev.type = EV_KEY;
+		           	ev.code = KEY_END;
+		           	ev.value = 1;
+				}
+				last_sel = selected;
+			}
 		}
 	}
-
+	
     if (ev.type != EV_KEY || ev.code > KEY_MAX)
         return 0;
 
@@ -478,7 +486,6 @@ void ui_exit(void) {
 	free(gProgressBarEmpty);
 	free(gProgressBarFill);
 	free(gInstallationOverlay);
-	free(gProgressBarIndeterminate);
 	gr_exit();
 }
 
@@ -500,18 +507,6 @@ void ui_init(void)
         int result = res_create_surface(BITMAPS[i].name, BITMAPS[i].surface);
         if (result < 0) {
             LOGE("Missing bitmap %s\n(Code %d)\n", BITMAPS[i].name, result);
-        }
-    }
-
-    gProgressBarIndeterminate = malloc(ui_parameters.indeterminate_frames * sizeof(gr_surface));
-
-    for (i = 0; i < ui_parameters.indeterminate_frames; ++i) {
-        char filename[40];
-        // "indeterminate01.png", "indeterminate02.png", ...
-        sprintf(filename, "indeterminate%02d", i+1);
-        int result = res_create_surface(filename, gProgressBarIndeterminate+i);
-        if (result < 0) {
-            LOGE("Missing bitmap %s\n(Code %d)\n", filename, result);
         }
     }
 
@@ -554,16 +549,6 @@ void ui_set_background(int icon)
     pthread_mutex_unlock(&gUpdateMutex);
 }
 
-void ui_show_indeterminate_progress()
-{
-    pthread_mutex_lock(&gUpdateMutex);
-    if (gProgressBarType != PROGRESSBAR_TYPE_INDETERMINATE) {
-        gProgressBarType = PROGRESSBAR_TYPE_INDETERMINATE;
-        update_progress_locked();
-    }
-    pthread_mutex_unlock(&gUpdateMutex);
-}
-
 void ui_show_progress(float portion, int seconds)
 {
     pthread_mutex_lock(&gUpdateMutex);
@@ -584,7 +569,7 @@ void ui_set_progress(float fraction)
     if (fraction > 1.0) fraction = 1.0;
     if (gProgressBarType == PROGRESSBAR_TYPE_NORMAL && fraction > gProgress) {
         // Skip updates that aren't visibly different.
-        int width = gr_get_width(gProgressBarIndeterminate[0]);
+        int width = gr_get_width(gProgressBarFill);
         float scale = width * gProgressScopeSize;
         if ((int) (gProgress * scale) != (int) (fraction * scale)) {
             gProgress = fraction;
@@ -633,7 +618,7 @@ void ui_print(const char *fmt, ...)
 }
 
 void ui_start_menu(char** headers, char** items, int initial_selection) {
-    int i;
+    int i,len;
     pthread_mutex_lock(&gUpdateMutex);
     if (text_rows > 0 && text_cols > 0) {
         for (i = 0; i < text_rows; ++i) {
@@ -644,8 +629,9 @@ void ui_start_menu(char** headers, char** items, int initial_selection) {
         menu_top = i;
         for (; i < text_rows; ++i) {
             if (items[i-menu_top] == NULL) break;
-			strcpy(menu[i], " - ");
-            strncpy(menu[i]+3, items[i-menu_top], text_cols-1-3);
+			strcpy(menu[i], "                                    ");
+			len = text_cols/2 - strlen(items[i-menu_top])/2;
+            strncpy(menu[i]+len, items[i-menu_top], text_cols-1-len);
             menu[i][text_cols-1] = '\0';
         }
         menu_items = i - menu_top;
@@ -706,25 +692,6 @@ void ui_show_text(int visible)
     pthread_mutex_unlock(&gUpdateMutex);
 }
 
-// Return true if USB is connected.
-static int usb_connected() {
-    int fd = open("/sys/class/android_usb/android0/state", O_RDONLY);
-    if (fd < 0) {
-        printf("failed to open /sys/class/android_usb/android0/state: %s\n",
-               strerror(errno));
-        return 0;
-    }
-
-    char buf;
-    /* USB is connected if android_usb state is CONNECTED or CONFIGURED */
-    int connected = (read(fd, &buf, 1) == 1) && (buf == 'C');
-    if (close(fd) < 0) {
-        printf("failed to close /sys/class/android_usb/android0/state: %s\n",
-               strerror(errno));
-    }
-    return connected;
-}
-
 int ui_wait_key()
 {
     pthread_mutex_lock(&key_queue_mutex);
@@ -732,7 +699,7 @@ int ui_wait_key()
     // Time out after UI_WAIT_KEY_TIMEOUT_SEC, unless a USB cable is
     // plugged in.
  
- 	do {
+ 	//do {
         struct timeval now;
         struct timespec timeout;
         gettimeofday(&now, NULL);
@@ -746,7 +713,7 @@ int ui_wait_key()
         while (key_queue_len == 0 && rc != ETIMEDOUT) {
             rc = pthread_cond_timedwait(&key_queue_cond, &key_queue_mutex, &timeout);
         }
-    } while (0 && key_queue_len == 0);
+    //} while (0 && key_queue_len == 0);
 
     int key = -1;
     if (key_queue_len > 0) {

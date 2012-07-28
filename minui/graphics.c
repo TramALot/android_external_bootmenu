@@ -69,7 +69,7 @@ static int get_framebuffer(GGLSurface *fb)
     int fd;
     void *bits;
 
-    fd = open("/dev/graphics/fb2", O_RDWR);
+    fd = open("/dev/graphics/fb0", O_RDWR);
     if (fd < 0) {
         perror("cannot open fb0");
         return -1;
@@ -314,8 +314,6 @@ int gr_init(void)
 
     get_memory_surface(&gr_mem_surface);
 
-    //printf("Boot Menu : framebuffer: fd %d (%d x %d)\n", gr_fb_fd, gr_framebuffer[0].width, gr_framebuffer[0].height);
-
         /* start with 0 as front (displayed) and 1 as back (drawing) */
     gr_active_fb = 0;
     set_active_framebuffer(0);
@@ -338,19 +336,7 @@ void gr_exit(void)
     free(gr_font_texture.data);
 
 	GGLContext *gl = gr_context;
-/*	gl->disable(gl, GGL_BLEND);
-	gl->disable(gl, GGL_TEXTURE_2D);
-	gl->disable(gl, GGL_DITHER);
-	gl->disable(gl, GGL_SCISSOR_TEST);	
-    gl->clearColorx(gl,255,255,255,255);
-    gl->clear(gl, GGL_COLOR_BUFFER_BIT);
-	gl->clear(gl, GGL_DEPTH_BUFFER_BIT);
-	gl->clear(gl, GGL_STENCIL_BUFFER_BIT);
-	*/
 	gglUninit(gl);
-
-//    void (*clearDepthx)(void* c, GGLclampx depth);
-//    void (*clearStencil)(void* c, GGLint s);
 
     close(gr_fb_fd);
     gr_fb_fd = -1;

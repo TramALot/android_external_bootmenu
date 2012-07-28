@@ -40,64 +40,75 @@
 
 //Menu related stuff
 
-char* MENU_HEADERS[] = { " Project Lense Boot Menu v" EXPAND(RECOVERY_API_VERSION), "", " Please choose your boot preference", NULL };
+char* MENU_HEADERS[] = { "   Project Lense BootMenu v" EXPAND(RECOVERY_API_VERSION), NULL };
 
 char stock_name[40] = "Stock System";
 char second_name[40] = "Second System";
-char recovery_name[40] = "Custom System";
+char recovery_name[40] = "Custom Recovery";
 char* MENU_ITEMS[] = { stock_name, second_name, recovery_name, NULL };
 
 extern UIParameters ui_parameters;
 
-void configuration(const char* file) {
+void configuration(const char* file, const char* prop) {
 	//default value
 	boot_default = 0;
-	touch_y_sen = 70;
-	touch_x_sen = 360;
-	touch_select = 0;
+	wait_timeout = 10;
+
+	stock_init = 0;
+	stock_adbd = 0;
+	second_init = 0;
+	second_adbd = 0;
+
 	int brightness = 100;
 	int keypad_light = 1;
-	wait_timeout = 10;
 	char theme[40] = "default";
 
-	FILE* fp = fopen(file, "r");
-	if (fp != NULL) {
-		char item[40];
-		char value[40];
-		static char buffer[2048];
-		while(fgets(buffer, sizeof(buffer), fp) != (char *)NULL) {
-			if(buffer[0] == '#') continue;
-			if(sscanf(buffer, "%39[^=]=%39[^\n]", item, value) == 2) {
-				if(!strcmp(item, "default")) {
-					if(!strcmp(value, "stock")) boot_default = 0;
-					else if(!strcmp(value, "second")) boot_default = 1;
-					else if(!strcmp(value, "recovery")) boot_default = 2;
-				} else if(!strcmp(item, "stock_name")) {
-					strncpy(stock_name, value, 32);
-				} else if(!strcmp(item, "second_name")) {
-					strncpy(second_name, value, 32);
-				} else if(!strcmp(item, "recovery_name")) {
-					strncpy(recovery_name, value, 32);
-				} else if(!strcmp(item, "brightness")) {
-					brightness = atoi(value);
-				} else if(!strcmp(item, "keypad_light")) {
-					keypad_light = atoi(value);
-				} else if(!strcmp(item, "timeout")) {
-					wait_timeout = atoi(value);
-				} else if(!strcmp(item, "theme")) {
-					strncpy(theme, value, 39);
-				} else if(!strcmp(item, "touch_select")) {
-					touch_select = atoi(value);
-				} else if(!strcmp(item, "touch_x")) {
-					touch_x_sen = atoi(value);
-				} else if(!strcmp(item, "touch_y")) {
-					touch_y_sen = atoi(value);
+	if (strcmp(prop, "ap-bp-bypass") != 0) {
+		//read conf
+		FILE* fp = fopen(file, "r");
+		if (fp != NULL) {
+			char item[40];
+			char value[40];
+			static char buffer[2048];
+			while(fgets(buffer, sizeof(buffer), fp) != (char *)NULL) {
+				if(buffer[0] == '#') continue;
+				if(sscanf(buffer, "%39[^=]=%39[^\n]", item, value) == 2) {
+					switch(item[0]) {
+						case 'b':
+							if(!strcmp(item, "brightness")) brightness = atoi(value);
+							break;
+						case 'd':
+							if(!strcmp(item, "default")) {
+								if(!strcmp(value, "stock")) boot_default = 0;
+								else if(!strcmp(value, "second")) boot_default = 1;
+								else if(!strcmp(value, "recovery")) boot_default = 2;
+							}
+							break;
+						case 'k':
+							if(!strcmp(item, "keypad_light")) keypad_light = atoi(value);
+							break;
+						case 'r':
+							if(!strcmp(item, "recovery_name")) strncpy(recovery_name, value, 32);
+							break;
+						case 's':
+							if(!strcmp(item, "stock_adbd")) { stock_adbd = atoi(value); break; }
+							if(!strcmp(item, "stock_init")) { stock_init = atoi(value); break; }
+							if(!strcmp(item, "stock_name")) { strncpy(stock_name, value, 32); break; }
+							if(!strcmp(item, "second_adbd")) { second_adbd = atoi(value); break; }
+							if(!strcmp(item, "second_init")) { second_init = atoi(value); break; } 
+							if(!strcmp(item, "second_name")) { strncpy(second_name, value, 32); break; }
+							break;
+						case 't':
+							if(!strcmp(item, "timeout")) { wait_timeout = atoi(value); break; }
+							if(!strcmp(item, "theme")) { strncpy(theme, value, 39); break; }
+							break;
+					}
 				}
 			}
+			fclose(fp);
 		}
-		fclose(fp);
 	}
-	
+
 	sprintf(RES_LOC,"/preinstall/bootmenu/themes/%s/%%s.png",theme);
 	led("button-backlight", keypad_light);
 	amoled(brightness);
@@ -135,7 +146,7 @@ static int get_menu_selection(char** headers, char** items, int menu_only, int i
     // accidentally trigger menu items.
     ui_clear_key_queue();
     ui_start_menu(headers, items, initial_selection);
-    int selected = initial_selection;
+    selected = initial_selection;
     int chosen_item = -1;
 
 	int presstext = 0;
@@ -148,14 +159,16 @@ static int get_menu_selection(char** headers, char** items, int menu_only, int i
             ui_end_menu();
 			ui_show_text(ENABLE);
 			ui_print("Boot selection timeout...\n");
+			NOTICE("Boot selection timeout...\n");
             return boot_default;
         }
 		
 		if (presstext == 0) {
-			presstext++;
-			if (touch_select == 1) {
-				ui_print("       [-->] Slide to select\n\n");
+			wait_timeout *= 5;
+			if (wait_timeout > 60) {
+				wait_timeout = 60;
 			}
+			presstext++;
 		}
 
         int action = device_handle_key(key, visible);
@@ -200,36 +213,51 @@ void run_action(int action) {
 }
 
 int main(int argc, char** argv) {
-	if (NULL != strstr(argv[0], "payload")) {
+	if ((NULL != strstr(argv[0], "payload")) || (NULL != strstr(argv[0], "update-binary"))) {
+
+		klog_init();
+		klog_set_level(6);
 
 		//skip if booted by wall charger / 2nd-init
 		char prop[30];
 		property_get("ro.bootmode", prop, "unknown");
 		if ( !strcmp(prop, "charger") || !strcmp(prop, "bootmenu")) {
+			NOTICE("2nd-init mode! Disabling Bootmenu...\n");
 			return EXIT_SUCCESS;
 		}
 
 		//read configuration file
-		configuration("/preinstall/bootmenu/config/bootmenu.prop");
+		configuration("/preinstall/bootmenu/config/bootmenu.prop",prop);
 
 		struct stat modes;
-		if (stat(RECOVERY_MODE_FILE, &modes) == 0) {
-			remove(RECOVERY_MODE_FILE);
-			run_action(ITEM_RECOVERY);
+		if (stat(STOCK_MODE_FILE, &modes) == 0) {
+			remove(STOCK_MODE_FILE);
 			led("button-backlight", DISABLE);
+			INFO("Direct mode! Boot to 1st-system...\n");
+			run_action(ITEM_STOCK);
 			return EXIT_SUCCESS;
 		}
 
 		if (stat(SECOND_MODE_FILE, &modes) == 0) {
 			remove(SECOND_MODE_FILE);
-			run_action(ITEM_SECOND);
 			led("button-backlight", DISABLE);
+			INFO("Direct mode! Boot to 2nd-system...\n");
+			run_action(ITEM_SECOND);
+			return EXIT_SUCCESS;
+		}
+
+		if (stat(RECOVERY_MODE_FILE, &modes) == 0) {
+			remove(RECOVERY_MODE_FILE);
+			led("button-backlight", DISABLE);
+			INFO("Direct mode! Boot to Recovery...\n");
+			run_action(ITEM_RECOVERY);
 			return EXIT_SUCCESS;
 		}
 
 		if (wait_timeout == 0) {
-			run_action(boot_default);
 			led("button-backlight", DISABLE);
+			NOTICE("Disable mode! Boot to default : %s\n",MENU_ITEMS[boot_default]);
+			run_action(boot_default);
 			return EXIT_SUCCESS;
 		}
 
@@ -239,8 +267,9 @@ int main(int argc, char** argv) {
 		
 
 		//action
-		int action = get_menu_selection(MENU_HEADERS, (char**)MENU_ITEMS, 0, 0);
+		int action = get_menu_selection(MENU_HEADERS, (char**)MENU_ITEMS, 0, -1);
 		ui_print("Booting %s...\n",MENU_ITEMS[action]);
+		INFO("Booting %s...\n",MENU_ITEMS[action]);
 		run_action(action);
 
 		//finish
@@ -249,10 +278,11 @@ int main(int argc, char** argv) {
 		return EXIT_SUCCESS;
 	}
 
-	printf("Bootmenu!\n");
-	printf("Info     : Boot Menu\n");
+	printf("bootmenu!\n");
+	printf("Info     : This binary is a part of Project Lense BootMenu\n");
 	printf("Target   : Motorola Spyder (Kernel 3.0.8, ICS 4.0.4)\n");
 	printf("Build    : v"EXPAND(RECOVERY_API_VERSION)" by whirleyes@github\n");
 	printf("\n");
+
 	return EXIT_SUCCESS;
 }
