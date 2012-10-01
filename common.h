@@ -128,6 +128,7 @@ int wait_timeout;
 int boot_default;
 int stock_init, second_init;
 int stock_adbd, second_adbd;
+int recovery_mode;
 
 enum {
   DISABLE,
@@ -158,6 +159,7 @@ void boot_recovery();
 void boot(const char* script, int adbd, int init);
 
 #define RECOVERY_MODE_FILE "/preinstall/.recovery_mode"
+#define RECOVERY_MODE_TYPE "/preinstall/.recovery_second"
 #define STOCK_MODE_FILE "/preinstall/.stock_mode"
 #define SECOND_MODE_FILE "/preinstall/.second_mode"
 

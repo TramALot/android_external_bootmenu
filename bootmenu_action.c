@@ -85,7 +85,7 @@ void amoled(int value) { write_sys("/sys/class/backlight/430_540_960_amoled_bl/b
 void vibrate(int value) { write_sys("/sys/class/timed_output/vibrator/enable", value); }
 void boot_stock() { boot("stock", stock_adbd, stock_init); }
 void boot_second() { boot("second", second_adbd, second_init); }
-void boot_recovery() { boot("recovery", 0, 0); }
+void boot_recovery() { boot("recovery", recovery_mode, 0); }
 void boot(const char* script, int adbd, int init) {
 	char scripts[PATH_MAX];
 	sprintf(scripts, "/preinstall/bootmenu/script/boot_%s.sh %d %d", script, adbd, init);

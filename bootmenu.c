@@ -58,6 +58,7 @@ void configuration(const char* file, const char* prop) {
 	stock_adbd = 0;
 	second_init = 0;
 	second_adbd = 0;
+	recovery_mode = 0;
 
 	int brightness = 100;
 	int keypad_light = 1;
@@ -248,6 +249,10 @@ int main(int argc, char** argv) {
 
 		if (stat(RECOVERY_MODE_FILE, &modes) == 0) {
 			remove(RECOVERY_MODE_FILE);
+			if (stat(RECOVERY_MODE_TYPE, &modes) == 0) {
+				remove(RECOVERY_MODE_TYPE);
+				recovery_mode = 1;
+			}
 			led("button-backlight", DISABLE);
 			INFO("Direct mode! Boot to Recovery...\n");
 			run_action(ITEM_RECOVERY);
@@ -264,7 +269,6 @@ int main(int argc, char** argv) {
 		//Start ui
 		ui_init();
 		ui_set_background(BACKGROUND_ICON_INSTALLING);
-		
 
 		//action
 		int action = get_menu_selection(MENU_HEADERS, (char**)MENU_ITEMS, 0, -1);
